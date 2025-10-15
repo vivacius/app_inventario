@@ -223,6 +223,8 @@ import streamlit as st
 import plotly.express as px
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from io import BytesIO
+from datetime import date, timedelta
 
 # ==========================
 # CARGA VARIABLES DE ENTORNO
@@ -957,3 +959,4 @@ st.markdown("""
 - Si creas `precios_productos`, aparecerán KPIs de valorizado automáticamente.
 
 """)
+
