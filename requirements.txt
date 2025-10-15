@@ -4,4 +4,3 @@ plotly
 supabase
 python-dotenv
 XlsxWriter
-json
