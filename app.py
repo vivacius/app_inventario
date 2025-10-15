@@ -463,6 +463,25 @@ if main_section == "📊 Dashboard":
     # ====== Exportar Excel: Bodega 2 (Inventario + Movimientos) ======
     st.markdown("### ⬇️ Exportar Excel — Bodega 2")
     
+    # Helper: sanitizar DF para Excel (fechas sin tz y objetos como texto)
+    def sanitize_for_excel(df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+        for col in out.columns:
+            # Normalizar datetimes
+            if pd.api.types.is_datetime64_any_dtype(out[col]):
+                out[col] = pd.to_datetime(out[col], errors="coerce")
+                # remover tz si la hay
+                try:
+                    out[col] = out[col].dt.tz_convert(None)
+                except Exception:
+                    try:
+                        out[col] = out[col].dt.tz_localize(None)
+                    except Exception:
+                        pass
+            # Serializar listas/dicts a texto
+            out[col] = out[col].apply(lambda x: json.dumps(x) if isinstance(x, (list, dict)) else x)
+        return out
+    
     # Filtros de fecha para movimientos (por defecto últimos 30 días)
     col_exp1, col_exp2, col_exp3 = st.columns([1,1,1])
     with col_exp1:
@@ -472,10 +491,10 @@ if main_section == "📊 Dashboard":
     with col_exp3:
         st.write("")  # espaciador
     
-    # Preparar DF de INVENTARIO actual Bodega2
+    # INVENTARIO actual de Bodega2
     inv_b2_xls = b2[["codigo_barras", "detalle", "cantidad"]].copy().sort_values("codigo_barras")
     
-    # Preparar DF de MOVIMIENTOS Bodega2 (ingresos/salidas con fecha)
+    # MOVIMIENTOS Bodega2 (ingresos/salidas con fecha)
     mov_b2 = mov.copy()
     if not mov_b2.empty:
         mov_b2 = mov_b2[
@@ -485,14 +504,14 @@ if main_section == "📊 Dashboard":
             (mov_b2["fecha_hora"].dt.date <= fecha_hasta)
         ].copy()
     
-        # Añadir detalle de producto al movimiento (catálogo de terminados)
+        # Añadir nombre/detalle del terminado
         if not rela.empty:
             det_term = rela.rename(columns={"codigo_terminado": "codigo_barras", "detalle": "detalle_terminado"})[
                 ["codigo_barras", "detalle_terminado"]
             ]
             mov_b2 = mov_b2.merge(det_term, on="codigo_barras", how="left")
     
-        # Ordenar y seleccionar columnas
+        # Orden y columnas finales
         mov_b2 = mov_b2.sort_values("fecha_hora")[
             ["fecha_hora", "codigo_barras", "detalle_terminado", "movimiento", "cantidad", "usuario", "observaciones"]
         ].rename(columns={
@@ -502,19 +521,30 @@ if main_section == "📊 Dashboard":
     else:
         mov_b2 = pd.DataFrame(columns=["fecha","codigo_barras","detalle","movimiento","cantidad","usuario","observaciones"])
     
+    # Normalizar columna fecha (quitar tz si la hay)
+    if not mov_b2.empty:
+        mov_b2["fecha"] = pd.to_datetime(mov_b2["fecha"], errors="coerce")
+        try:
+            mov_b2["fecha"] = mov_b2["fecha"].dt.tz_convert(None)
+        except Exception:
+            mov_b2["fecha"] = mov_b2["fecha"].dt.tz_localize(None)
+    
     # Botón de descarga (Excel en memoria)
     buffer = BytesIO()
     if st.button("Generar Excel de Bodega 2"):
         with pd.ExcelWriter(buffer, engine="xlsxwriter", datetime_format="yyyy-mm-dd hh:mm:ss") as writer:
+            inv_b2_xls_s = sanitize_for_excel(inv_b2_xls)
+            mov_b2_s     = sanitize_for_excel(mov_b2)
+    
             # Sheet 1: Inventario actual
-            inv_b2_xls.to_excel(writer, index=False, sheet_name="Inventario_B2")
+            inv_b2_xls_s.to_excel(writer, index=False, sheet_name="Inventario_B2")
             ws1 = writer.sheets["Inventario_B2"]
     
             # Sheet 2: Movimientos (ingresos/salidas)
-            mov_b2.to_excel(writer, index=False, sheet_name="Movimientos_B2")
+            mov_b2_s.to_excel(writer, index=False, sheet_name="Movimientos_B2")
             ws2 = writer.sheets["Movimientos_B2"]
     
-            # Autoajuste de columnas (simple)
+            # Autoajuste de columnas
             def autosize(ws, df):
                 for idx, col in enumerate(df.columns):
                     try:
@@ -524,8 +554,9 @@ if main_section == "📊 Dashboard":
                     except Exception:
                         max_len = len(str(col))
                     ws.set_column(idx, idx, min(max_len + 2, 40))  # ancho máx 40
-            autosize(ws1, inv_b2_xls)
-            autosize(ws2, mov_b2)
+    
+            autosize(ws1, inv_b2_xls_s)
+            autosize(ws2, mov_b2_s)
     
         buffer.seek(0)
         st.download_button(
@@ -959,4 +990,5 @@ st.markdown("""
 - Si creas `precios_productos`, aparecerán KPIs de valorizado automáticamente.
 
 """)
+
 
