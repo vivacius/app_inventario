@@ -458,6 +458,80 @@ if main_section == "📊 Dashboard":
 
     # KPIs base
     t_b1, t_b2, t_all, p_b1, p_b2, skus_b1, skus_b2 = compute_totales(b1, b2)
+    # ====== Exportar Excel: Bodega 2 (Inventario + Movimientos) ======
+    st.markdown("### ⬇️ Exportar Excel — Bodega 2")
+    
+    # Filtros de fecha para movimientos (por defecto últimos 30 días)
+    col_exp1, col_exp2, col_exp3 = st.columns([1,1,1])
+    with col_exp1:
+        fecha_desde = st.date_input("Desde", value=date.today() - timedelta(days=30))
+    with col_exp2:
+        fecha_hasta = st.date_input("Hasta", value=date.today(), min_value=fecha_desde)
+    with col_exp3:
+        st.write("")  # espaciador
+    
+    # Preparar DF de INVENTARIO actual Bodega2
+    inv_b2_xls = b2[["codigo_barras", "detalle", "cantidad"]].copy().sort_values("codigo_barras")
+    
+    # Preparar DF de MOVIMIENTOS Bodega2 (ingresos/salidas con fecha)
+    mov_b2 = mov.copy()
+    if not mov_b2.empty:
+        mov_b2 = mov_b2[
+            (mov_b2["bodega"] == "Bodega2") &
+            (mov_b2["movimiento"].isin(["Producción", "Devolución", "Salida", "Venta"])) &
+            (mov_b2["fecha_hora"].dt.date >= fecha_desde) &
+            (mov_b2["fecha_hora"].dt.date <= fecha_hasta)
+        ].copy()
+    
+        # Añadir detalle de producto al movimiento (catálogo de terminados)
+        if not rela.empty:
+            det_term = rela.rename(columns={"codigo_terminado": "codigo_barras", "detalle": "detalle_terminado"})[
+                ["codigo_barras", "detalle_terminado"]
+            ]
+            mov_b2 = mov_b2.merge(det_term, on="codigo_barras", how="left")
+    
+        # Ordenar y seleccionar columnas
+        mov_b2 = mov_b2.sort_values("fecha_hora")[
+            ["fecha_hora", "codigo_barras", "detalle_terminado", "movimiento", "cantidad", "usuario", "observaciones"]
+        ].rename(columns={
+            "fecha_hora": "fecha",
+            "detalle_terminado": "detalle"
+        })
+    else:
+        mov_b2 = pd.DataFrame(columns=["fecha","codigo_barras","detalle","movimiento","cantidad","usuario","observaciones"])
+    
+    # Botón de descarga (Excel en memoria)
+    buffer = BytesIO()
+    if st.button("Generar Excel de Bodega 2"):
+        with pd.ExcelWriter(buffer, engine="xlsxwriter", datetime_format="yyyy-mm-dd hh:mm:ss") as writer:
+            # Sheet 1: Inventario actual
+            inv_b2_xls.to_excel(writer, index=False, sheet_name="Inventario_B2")
+            ws1 = writer.sheets["Inventario_B2"]
+    
+            # Sheet 2: Movimientos (ingresos/salidas)
+            mov_b2.to_excel(writer, index=False, sheet_name="Movimientos_B2")
+            ws2 = writer.sheets["Movimientos_B2"]
+    
+            # Autoajuste de columnas (simple)
+            def autosize(ws, df):
+                for idx, col in enumerate(df.columns):
+                    try:
+                        max_len = max(
+                            [len(str(col))] + [len(str(x)) for x in df[col].astype(str).values]
+                        )
+                    except Exception:
+                        max_len = len(str(col))
+                    ws.set_column(idx, idx, min(max_len + 2, 40))  # ancho máx 40
+            autosize(ws1, inv_b2_xls)
+            autosize(ws2, mov_b2)
+    
+        buffer.seek(0)
+        st.download_button(
+            label="⬇️ Descargar Excel",
+            data=buffer.getvalue(),
+            file_name=f"Bodega2_{fecha_desde.isoformat()}_{fecha_hasta.isoformat()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     # Valor inventario
     inv_b1 = b1.rename(columns={"codigo_barras":"codigo"})
@@ -881,4 +955,5 @@ st.markdown("""
 - Dashboard PRO: KPIs ampliados (SKUs, valor, cobertura), composición, evolución, top rotación, críticos, búsqueda y filtros por ventana/umbral/bodegas.
 - Gestión de inventario: sin cambios funcionales, con refresh inmediato.
 - Si creas `precios_productos`, aparecerán KPIs de valorizado automáticamente.
+
 """)
