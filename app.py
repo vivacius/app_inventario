@@ -984,11 +984,11 @@ else:
 st.markdown("""
 ---
 **Notas**
-- App demo para Poliartes (2024) con Streamlit + Supabase.
+- App inventario Poliartes (2025) Powered by Santiago Correa
 - Dashboard PRO: KPIs ampliados (SKUs, valor, cobertura), composición, evolución, top rotación, críticos, búsqueda y filtros por ventana/umbral/bodegas.
-- Gestión de inventario: sin cambios funcionales, con refresh inmediato.
 - Si creas `precios_productos`, aparecerán KPIs de valorizado automáticamente.
 
 """)
+
 
 
